@@ -1,40 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>Smart Table - Test Connessione</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ardea Caffè</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; background-color: #f8f9fa; margin: 0; padding: 20px; }
+        h1 { color: #333; margin-top: 50px; }
+        .tavolo { font-size: 1.2rem; color: #666; margin-bottom: 40px; }
+        .btn-call { background-color: #d9534f; color: white; border: none; padding: 25px 40px; font-size: 1.5rem; border-radius: 50px; cursor: pointer; width: 90%; max-width: 300px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-menu { background-color: #5cb85c; color: white; border: none; padding: 15px 30px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 80%; max-width: 250px; margin-top: 20px; }
+        #status { margin-top: 30px; font-size: 0.9rem; color: #999; }
+    </style>
 </head>
 <body>
-    <h1>Smart Table - Sistema Connesso</h1>
-    <div id="status">Inizializzazione...</div>
+
+    <h1>Ardea Caffè</h1>
+    <div class="tavolo" id="tavolo-info">Tavolo in attesa...</div>
+
+    <button class="btn-call" onclick="chiamaCameriere()">🔔 CHIAMA CAMERIERE</button>
+    <br>
+    <button class="btn-menu" onclick="apriMenu()">📖 Visualizza Menu</button>
+
+    <div id="status"></div>
 
     <script>
-        // Sostituisci solo quello che c'è dentro le virgolette
         const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        console.log("Inizializzazione Supabase...");
+        // Simuliamo il numero del tavolo per ora
+        document.getElementById('tavolo-info').innerText = "Tavolo 05";
 
-        try {
-            const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            
-            async function testConnection() {
-                document.getElementById('status').innerText = 'Test in corso...';
-                
-                const { data, error } = await client.from('tenants').select('*');
-                
-                if (error) {
-                    console.error("Errore Supabase:", error);
-                    document.getElementById('status').innerText = 'Errore: ' + error.message;
-                } else {
-                    console.log("Successo!", data);
-                    document.getElementById('status').innerText = 'Connessione OK! Database pronto.';
-                }
-            }
-            testConnection();
-        } catch (err) {
-            console.error("Errore fatale:", err);
-            document.getElementById('status').innerText = 'Errore fatale: ' + err.message;
+        async function chiamaCameriere() {
+            document.getElementById('status').innerText = "Chiamata inviata...";
+            // Qui inseriremo la logica per aggiornare il DB
+            // Per ora simuliamo solo l'azione visiva
+            alert("Il cameriere è stato avvisato!");
+            document.getElementById('status').innerText = "Cameriere in arrivo.";
+        }
+
+        function apriMenu() {
+            alert("Apertura Menu...");
         }
     </script>
 </body>
