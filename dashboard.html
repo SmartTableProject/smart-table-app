@@ -2,66 +2,54 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Table - Ardea Caffè</title>
+    <title>Dashboard Cameriere - Ardea Caffè</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        h1 { text-align: center; color: #333; }
-        
-        /* Layout Quick Actions */
-        .quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 20px; }
-        .quick-btn { 
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            padding: 20px; background: white; border: 1px solid #ddd; border-radius: 12px;
-            cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .quick-btn:active { transform: scale(0.95); background: #e9ecef; }
-        .icon { font-size: 1.5rem; margin-bottom: 5px; }
-        .btn-full { grid-column: span 2; background: #007bff; color: white; border: none; }
-        
-        /* Messaggio di successo */
-        .success { background: #28a745 !important; color: white; border-color: #28a745; }
+        .card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 10px; 
+                display: flex; justify-content: space-between; align-items: center; border-left: 8px solid #ccc; }
+        /* Colori per priorità */
+        .card.water { border-left-color: #3498db; }
+        .card.bread { border-left-color: #f1c40f; }
+        .card.cutlery { border-left-color: #e67e22; }
+        .card.clean { border-left-color: #9b59b6; }
+        .btn-done { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
-
-    <h1>Tavolo <span id="tavolo-numero">--</span></h1>
-
-    <div class="quick-grid">
-        <button class="quick-btn" onclick="inviaChiamata('water', 'Acqua/Bibite')"><span class="icon">💧</span>Acqua</button>
-        <button class="quick-btn" onclick="inviaChiamata('bread', 'Pane')"><span class="icon">🥖</span>Pane</button>
-        <button class="quick-btn" onclick="inviaChiamata('cutlery', 'Posate')"><span class="icon">🍴</span>Posate</button>
-        <button class="quick-btn" onclick="inviaChiamata('clean', 'Pulizia')"><span class="icon">🧽</span>Pulisci</button>
-        <button class="quick-btn btn-full" onclick="inviaChiamata('generic', 'Chiamata Generica')">🙋‍♂️ CHIAMA CAMERIERE</button>
-    </div>
+    <h1>📋 Chiamate in Sala</h1>
+    <div id="lista-chiamate">Recupero dati...</div>
 
     <script>
-        const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_r0qbGgg0pZYrXHfLLiRBzg_TZmMspfd'; // Chiave corretta
-        const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'sb_publishable_r0qbGgg0pZYrXHfLLiRBzg_TZmMspfd');
 
-        // Recupera numero tavolo da URL (?tavolo=05)
-        const params = new URLSearchParams(window.location.search);
-        const tableNumber = params.get('tavolo') || '00';
-        document.getElementById('tavolo-numero').innerText = tableNumber;
-
-        async function inviaChiamata(tipo, descrizione) {
-            const { error } = await client.from('calls').insert([
-                { 
-                    table_number: tableNumber, 
-                    call_type: tipo, 
-                    payload: { label: descrizione }, 
-                    status: 'pending' 
-                }
-            ]);
-
-            if (error) {
-                alert("Errore invio: " + error.message);
-            } else {
-                alert("Richiesta inviata correttamente!");
-            }
+        async function caricaChiamate() {
+            const { data, error } = await client.from('calls').select('*').eq('status', 'pending');
+            const container = document.getElementById('lista-chiamate');
+            if (data.length === 0) { container.innerHTML = "<p>Tutto tranquillo in sala.</p>"; return; }
+            
+            container.innerHTML = "";
+            data.forEach(item => {
+                const tipo = item.call_type || 'generic';
+                const desc = item.payload?.label || 'Chiamata';
+                container.innerHTML += `
+                    <div class="card ${tipo}">
+                        <div>
+                            <strong>${item.table_number}</strong><br>
+                            ${desc}
+                        </div>
+                        <button class="btn-done" onclick="completaChiamata(${item.id})">Fatto</button>
+                    </div>`;
+            });
         }
+
+        async function completaChiamata(id) {
+            await client.from('calls').update({ status: 'done' }).eq('id', id);
+            caricaChiamate();
+        }
+
+        caricaChiamate();
+        setInterval(caricaChiamate, 3000); // Aggiornamento automatico
     </script>
 </body>
 </html>
