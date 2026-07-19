@@ -7,38 +7,43 @@
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
         .card { background: white; padding: 20px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .error { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
     <h1>Chiamate in attesa</h1>
-    <div id="lista-chiamate">Recupero dati...</div>
+    <div id="lista-chiamate">Inizializzazione...</div>
 
     <script>
         const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
         
-        // Abbiamo cambiato 'supabase' in 'client' per evitare il conflitto
-        const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // Inizializzazione pulita
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function caricaChiamate() {
-            const { data, error } = await client
+            console.log("Tentativo recupero dati in corso...");
+            
+            // Proviamo a prendere i dati SENZA filtri, per vedere se almeno la tabella è accessibile
+            const { data, error } = await supabaseClient
                 .from('calls')
-                .select('*')
-                .eq('status', 'pending');
+                .select('*');
 
             if (error) {
-                document.getElementById('lista-chiamate').innerText = "Errore: " + error.message;
+                console.error("ERRORE CRITICO:", error);
+                document.getElementById('lista-chiamate').innerHTML = `<p class="error">Errore di connessione: ${error.message}</p>`;
                 return;
             }
 
+            console.log("Dati ricevuti dal database:", data);
             const container = document.getElementById('lista-chiamate');
             container.innerHTML = "";
             
-            if (data.length === 0) {
-                container.innerHTML = "<p>Nessuna chiamata in attesa.</p>";
+            if (!data || data.length === 0) {
+                container.innerHTML = "<p>Nessuna chiamata in attesa al momento.</p>";
             } else {
                 data.forEach(item => {
-                    container.innerHTML += `<div class="card"><strong>${item.table_number}</strong> ha chiamato!</div>`;
+                    container.innerHTML += `<div class="card"><strong>${item.table_number || 'Tavolo'}</strong> ha chiamato!</div>`;
                 });
             }
         }
