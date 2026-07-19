@@ -2,26 +2,26 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Cameriere - Ardea Caffè</title>
+    <title>Dashboard Cameriere</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .card { background: white; padding: 20px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-        h1 { color: #333; }
-        .btn-done { background: #5cb85c; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        .card { background: white; padding: 20px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
     <h1>Chiamate in attesa</h1>
-    <div id="lista-chiamate">Caricamento chiamate...</div>
+    <div id="lista-chiamate">Recupero dati...</div>
 
     <script>
         const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // Abbiamo cambiato 'supabase' in 'client' per evitare il conflitto
+        const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function caricaChiamate() {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('calls')
                 .select('*')
                 .eq('status', 'pending');
@@ -38,23 +38,13 @@
                 container.innerHTML = "<p>Nessuna chiamata in attesa.</p>";
             } else {
                 data.forEach(item => {
-                    container.innerHTML += `
-                        <div class="card">
-                            <span><strong>${item.table_number}</strong> ha chiamato!</span>
-                            <button class="btn-done" onclick="completaChiamata('${item.id}')">Fatto</button>
-                        </div>`;
+                    container.innerHTML += `<div class="card"><strong>${item.table_number}</strong> ha chiamato!</div>`;
                 });
             }
         }
 
-        async function completaChiamata(id) {
-            await supabase.from('calls').update({ status: 'done' }).eq('id', id);
-            caricaChiamate(); // Ricarica la lista
-        }
-
-        // Aggiorna ogni 5 secondi
-        setInterval(caricaChiamate, 5000);
         caricaChiamate();
+        setInterval(caricaChiamate, 5000);
     </script>
 </body>
 </html>
