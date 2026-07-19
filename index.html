@@ -10,18 +10,22 @@
     <div id="status">Verifica connessione...</div>
 
     <script>
-        // Inserisci qui le tue chiavi salvate
-        const SUPABASE_URL = https://izmppsvnxghfeitktldh.supabase.co;
-        const SUPABASE_KEY = sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd;
+        // Le chiavi sono ora racchiuse tra virgolette '...'
+        const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
 
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function testConnection() {
-            const { data, error } = await supabase.from('tenants').select('*');
-            if (error) {
-                document.getElementById('status').innerText = 'Errore: ' + error.message;
-            } else {
-                document.getElementById('status').innerText = 'Connessione OK! Database pronto.';
+            try {
+                const { data, error } = await supabase.from('tenants').select('*');
+                if (error) {
+                    document.getElementById('status').innerText = 'Errore Database: ' + error.message;
+                } else {
+                    document.getElementById('status').innerText = 'Connessione OK! Database pronto.';
+                }
+            } catch (e) {
+                document.getElementById('status').innerText = 'Errore di sistema: ' + e.message;
             }
         }
         testConnection();
