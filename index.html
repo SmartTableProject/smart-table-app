@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Table - Test Connessione</title>
+    <!-- Carichiamo la libreria di Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Smart Table - Sistema Connesso</h1>
+    <div id="status">Verifica connessione...</div>
+
+    <script>
+        // Inserisci qui le tue chiavi salvate
+        const SUPABASE_URL = https://izmppsvnxghfeitktldh.supabase.co;
+        const SUPABASE_KEY = sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd;
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function testConnection() {
+            const { data, error } = await supabase.from('tenants').select('*');
+            if (error) {
+                document.getElementById('status').innerText = 'Errore: ' + error.message;
+            } else {
+                document.getElementById('status').innerText = 'Connessione OK! Database pronto.';
+            }
+        }
+        testConnection();
+    </script>
+</body>
+</html>
