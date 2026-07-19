@@ -3,46 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ardea Caffè</title>
+    <title>Ardea Caffè - Smart Table</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; text-align: center; background-color: #f8f9fa; padding: 20px; }
-        img { max-width: 200px; margin-top: 40px; margin-bottom: 20px; }
-        .tavolo { font-size: 3rem; font-weight: bold; color: #2c3e50; margin-bottom: 50px; }
-        .btn-call { background-color: #d9534f; color: white; border: none; padding: 25px 40px; font-size: 1.5rem; border-radius: 50px; cursor: pointer; width: 90%; max-width: 300px; }
+        img { max-width: 150px; margin: 20px 0; }
+        .tavolo { font-size: 2rem; color: #2c3e50; margin-bottom: 20px; }
+        
+        /* Layout Bottoni */
+        .btn-call { background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
+        .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .quick-btn { padding: 15px; background: white; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
     <img src="logo.png" alt="Logo">
-    <div class="tavolo">Tavolo 05</div>
-    <button class="btn-call" id="btn-call" onclick="chiamaCameriere()">🔔 CHIAMA CAMERIERE</button>
+    <div class="tavolo" id="tavolo-label">Tavolo --</div>
+
+    <!-- Pulsante principale -->
+    <button class="btn-call" id="btn-call" onclick="inviaChiamata('generic', 'Chiamata Generica')">🔔 CHIAMA CAMERIERE</button>
+
+    <!-- Pannello Quick Actions -->
+    <div class="quick-grid">
+        <button class="quick-btn" onclick="inviaChiamata('water', 'Acqua/Bibite')">💧 Acqua/Bibite</button>
+        <button class="quick-btn" onclick="inviaChiamata('bread', 'Pane')">🥖 Pane</button>
+        <button class="quick-btn" onclick="inviaChiamata('cutlery', 'Posate')">🍴 Posate</button>
+        <button class="quick-btn" onclick="inviaChiamata('clean', 'Pulizia')">🧽 Pulizia</button>
+    </div>
 
     <script>
         const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
+        const SUPABASE_KEY = 'sb_publishable_r0qbGgg0pZYrXHfLLiRBzg_TZmMspfd';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        async function chiamaCameriere() {
-            const btn = document.getElementById('btn-call');
-            btn.innerText = "Invio in corso...";
-            
-            try {
-                const { data, error } = await supabaseClient
-                    .from('calls')
-                    .insert([{ table_number: 'Tavolo 05', status: 'pending' }]);
+        // Lettura dinamica tavolo
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('tavolo') || '05';
+        document.getElementById('tavolo-label').innerText = "Tavolo " + t;
 
-                if (error) {
-                    console.error("ERRORE INVIO:", error);
-                    alert("Errore invio: " + error.message);
-                    btn.innerText = "🔔 CHIAMA CAMERIERE";
-                } else {
-                    btn.innerText = "✅ CHIAMATA INVIATA";
-                    btn.style.backgroundColor = "#5cb85c";
-                }
+        async function inviaChiamata(tipo, desc) {
+            const btn = document.getElementById('btn-call');
+            try {
+                const { error } = await supabaseClient.from('calls').insert([{ 
+                    table_number: 'Tavolo ' + t, 
+                    call_type: tipo, 
+                    payload: { label: desc },
+                    status: 'pending' 
+                }]);
+
+                if (error) throw error;
+                alert(desc + " richiesta!");
             } catch (err) {
-                console.error("ERRORE CATASTROFICO:", err);
-                btn.innerText = "🔔 CHIAMA CAMERIERE";
+                alert("Errore: " + err.message);
             }
         }
     </script>
