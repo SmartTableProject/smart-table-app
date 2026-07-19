@@ -2,33 +2,40 @@
 <html>
 <head>
     <title>Smart Table - Test Connessione</title>
-    <!-- Carichiamo la libreria di Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <h1>Smart Table - Sistema Connesso</h1>
-    <div id="status">Verifica connessione...</div>
+    <div id="status">Inizializzazione...</div>
 
     <script>
-        // Le chiavi sono ora racchiuse tra virgolette '...'
+        // Sostituisci solo quello che c'è dentro le virgolette
         const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_rOqbGgg0pZYrXHfLLiRBzg_TZmMspfd';
 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log("Inizializzazione Supabase...");
 
-        async function testConnection() {
-            try {
-                const { data, error } = await supabase.from('tenants').select('*');
+        try {
+            const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            async function testConnection() {
+                document.getElementById('status').innerText = 'Test in corso...';
+                
+                const { data, error } = await client.from('tenants').select('*');
+                
                 if (error) {
-                    document.getElementById('status').innerText = 'Errore Database: ' + error.message;
+                    console.error("Errore Supabase:", error);
+                    document.getElementById('status').innerText = 'Errore: ' + error.message;
                 } else {
+                    console.log("Successo!", data);
                     document.getElementById('status').innerText = 'Connessione OK! Database pronto.';
                 }
-            } catch (e) {
-                document.getElementById('status').innerText = 'Errore di sistema: ' + e.message;
             }
+            testConnection();
+        } catch (err) {
+            console.error("Errore fatale:", err);
+            document.getElementById('status').innerText = 'Errore fatale: ' + err.message;
         }
-        testConnection();
     </script>
 </body>
 </html>
