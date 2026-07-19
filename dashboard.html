@@ -20,20 +20,30 @@
     <h1>📋 Chiamate in Sala</h1>
     <div id="lista-chiamate">Recupero dati...</div>
 
-    <script>
-        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'sb_publishable_r0qbGgg0pZYrXHfLLiRBzg_TZmMspfd');
+   <script>
+    const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'sb_publishable_r0qbGgg0pZYrXHfLLiRBzg_TZmMspfd');
 
-        async function caricaChiamate() {
-            const { data, error } = await client.from('calls').select('*').eq('status', 'pending');
-            const container = document.getElementById('lista-chiamate');
-            if (data.length === 0) { container.innerHTML = "<p>Tutto tranquillo in sala.</p>"; return; }
-            
-            container.innerHTML = "";
+    // 1. Funzione per caricare la lista iniziale
+    async function caricaChiamate() {
+        const { data, error } = await client
+            .from('calls')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+        if (error) return;
+
+        const container = document.getElementById('lista-chiamate');
+        container.innerHTML = "";
+        
+        if (data.length === 0) {
+            container.innerHTML = "<p>Tutto tranquillo in sala.</p>";
+        } else {
             data.forEach(item => {
                 const tipo = item.call_type || 'generic';
                 const desc = item.payload?.label || 'Chiamata';
                 container.innerHTML += `
-                    <div class="card ${tipo}">
+                    <div class="card ${tipo}" id="call-${item.id}">
                         <div>
                             <strong>${item.table_number}</strong><br>
                             ${desc}
@@ -42,14 +52,25 @@
                     </div>`;
             });
         }
+    }
 
-        async function completaChiamata(id) {
-            await client.from('calls').update({ status: 'done' }).eq('id', id);
-            caricaChiamate();
-        }
+    // 2. Funzione per completare la chiamata
+    async function completaChiamata(id) {
+        await client.from('calls').update({ status: 'done' }).eq('id', id);
+        // La lista si aggiornerà da sola grazie al Realtime
+    }
 
-        caricaChiamate();
-        setInterval(caricaChiamate, 3000); // Aggiornamento automatico
-    </script>
+    // 3. LOGICA REALTIME: Ascolta i cambiamenti in tempo reale
+    client
+        .channel('schema-db-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, payload => {
+            console.log('Cambio rilevato!', payload);
+            caricaChiamate(); // Ricarica la lista istantaneamente
+        })
+        .subscribe();
+
+    // Caricamento iniziale
+    caricaChiamate();
+</script>
 </body>
 </html>
