@@ -9,7 +9,7 @@
         .btn-call { transition: background 0.3s; background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
         .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .quick-btn { padding: 15px; background: white; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; font-size: 0.9rem; }
-        #status-msg { margin-top: 15px; font-weight: bold; color: #27ae60; height: 20px; }
+        #status-msg { margin-top: 15px; font-weight: bold; color: #27ae60; height: 20px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -24,7 +24,28 @@
         const tableName = 'Tavolo ' + t;
         document.getElementById('tavolo-label').innerText = tableName;
 
-        // --- PING-BACK LISTENER ---
+        // 1. Caricamento Menu Dinamico
+        async function caricaMenu() {
+            const { data } = await client.from('config_buttons').select('*').eq('is_active', true);
+            const container = document.getElementById('menu-container');
+            container.innerHTML = ""; // Pulizia
+            data?.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = 'quick-btn';
+                b.innerText = btn.label;
+                b.onclick = () => inviaChiamata(btn.action_type, btn.label);
+                container.appendChild(b);
+            });
+        }
+
+        // 2. Invio Chiamata
+        async function inviaChiamata(tipo, desc) {
+            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: tableName, metadata: { type: tipo } }]);
+            await client.from('calls').insert([{ table_number: tableName, call_type: tipo, status: 'pending' }]);
+            alert(desc + " richiesta!");
+        }
+
+        // 3. Sistema Ping-Back (Realtime)
         client
             .channel('feedback-channel')
             .on('postgres_changes', { 
@@ -37,7 +58,7 @@
                     const btn = document.getElementById('btn-call');
                     const msg = document.getElementById('status-msg');
                     
-                    btn.style.backgroundColor = "#27ae60"; // Feedback verde
+                    btn.style.backgroundColor = "#27ae60";
                     msg.innerText = "✅ Il cameriere sta arrivando!";
                     
                     setTimeout(() => {
@@ -47,24 +68,6 @@
                 }
             })
             .subscribe();
-
-        async function caricaMenu() {
-            const { data } = await client.from('config_buttons').select('*').eq('is_active', true);
-            const container = document.getElementById('menu-container');
-            data?.forEach(btn => {
-                const b = document.createElement('button');
-                b.className = 'quick-btn';
-                b.innerText = btn.label;
-                b.onclick = () => inviaChiamata(btn.action_type, btn.label);
-                container.appendChild(b);
-            });
-        }
-
-        async function inviaChiamata(tipo, desc) {
-            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: tableName, metadata: { type: tipo } }]);
-            await client.from('calls').insert([{ table_number: tableName, call_type: tipo, status: 'pending' }]);
-            alert(desc + " richiesta!");
-        }
 
         caricaMenu();
     </script>
