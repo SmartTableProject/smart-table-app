@@ -42,7 +42,24 @@
         const t = params.get('tavolo') || '05';
         document.getElementById('tavolo-label').innerText = "Tavolo " + t;
 
+        // Funzione per inviare l'Audit Log (Fire-and-Forget)
+        async function logAudit(eventType, tableId, metadata = {}) {
+            supabaseClient
+                .from('audit_events')
+                .insert([{
+                    event_type: eventType,
+                    table_id: tableId,
+                    metadata: metadata
+                }])
+                .then(({ error }) => {
+                    if (error) console.error("Errore log:", error);
+                });
+        }
+
         async function inviaChiamata(tipo, desc) {
+            // Eseguiamo il log immediato
+            logAudit('call_created', 'Tavolo ' + t, { type: tipo, description: desc });
+            
             const btn = document.getElementById('btn-call');
             try {
                 const { error } = await supabaseClient.from('calls').insert([{ 
