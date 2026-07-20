@@ -6,8 +6,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .status-panel { margin-bottom: 20px; }
-        #btn-toggle { border: none; padding: 15px 25px; border-radius: 10px; cursor: pointer; font-size: 1rem; font-weight: bold; transition: background 0.3s; }
+        .staff-panel { margin-bottom: 20px; }
+        .staff-btn { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; color: white; }
         .card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 10px; 
                 display: flex; justify-content: space-between; align-items: center; border-left: 8px solid #ccc; }
         .card.water { border-left-color: #3498db; }
@@ -20,64 +20,44 @@
 <body>
     <h1>📋 Chiamate in Sala</h1>
     
-    <div class="status-panel">
-        <button id="btn-toggle" onclick="toggleServizio()">Caricamento stato...</button>
-    </div>
-
+    <div class="staff-panel" id="staff-container">Caricamento staff...</div>
     <div id="lista-chiamate">Recupero dati...</div>
 
     <script>
         const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bXBwc3ZueGdoZmVpdGt0bGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzA3NTIsImV4cCI6MjA5OTYwNjc1Mn0.-LQQC11p6d25EG67J1YCTp2QpYc2WlMW3nmg-z-VK_0');
 
-        let isDuty = false;
-
-        // --- GESTIONE STATO SERVIZIO ---
-        async function aggiornaUIStato() {
-            const btn = document.getElementById('btn-toggle');
-            btn.innerText = isDuty ? "🟢 In Servizio" : "🔴 In Pausa";
-            btn.style.backgroundColor = isDuty ? "#27ae60" : "#d9534f";
-            btn.style.color = "white";
+        // --- GESTIONE STAFF ---
+        async function caricaStaff() {
+            const { data } = await client.from('staff_status').select('*');
+            const container = document.getElementById('staff-container');
+            container.innerHTML = "";
+            data.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'staff-btn';
+                btn.style.backgroundColor = s.is_on_duty ? "#27ae60" : "#d9534f";
+                btn.innerText = s.is_on_duty ? s.staff_name + " (In Servizio)" : s.staff_name + " (In Pausa)";
+                btn.onclick = () => toggleStaff(s.id, s.is_on_duty);
+                container.appendChild(btn);
+            });
         }
 
-        async function toggleServizio() {
-            isDuty = !isDuty;
-            await client.from('staff_status').update({ is_on_duty: isDuty }).eq('staff_name', 'Cameriere 1');
-            aggiornaUIStato();
-        }
-
-        async function caricaStato() {
-            const { data } = await client.from('staff_status').select('is_on_duty').eq('staff_name', 'Cameriere 1').single();
-            if (data) {
-                isDuty = data.is_on_duty;
-                aggiornaUIStato();
-            }
+        async function toggleStaff(id, currentStatus) {
+            await client.from('staff_status').update({ is_on_duty: !currentStatus }).eq('id', id);
+            caricaStaff();
         }
 
         // --- GESTIONE CHIAMATE ---
         async function caricaChiamate() {
-            const { data, error } = await client
-                .from('calls')
-                .select('*')
-                .eq('status', 'pending')
-                .order('created_at', { ascending: false });
-
-            if (error) return;
-
+            const { data } = await client.from('calls').select('*').eq('status', 'pending').order('created_at', { ascending: false });
             const container = document.getElementById('lista-chiamate');
             container.innerHTML = "";
-            
-            if (data.length === 0) {
+            if (!data || data.length === 0) {
                 container.innerHTML = "<p>Tutto tranquillo in sala.</p>";
             } else {
                 data.forEach(item => {
-                    const tipo = item.call_type || 'generic';
-                    const desc = item.payload?.label || 'Chiamata';
                     container.innerHTML += `
-                        <div class="card ${tipo}" id="call-${item.id}">
-                            <div>
-                                <strong>${item.table_number}</strong><br>
-                                ${desc}
-                            </div>
+                        <div class="card ${item.call_type || 'generic'}" id="call-${item.id}">
+                            <div><strong>${item.table_number}</strong><br>${item.payload?.label || 'Chiamata'}</div>
                             <button class="btn-done" onclick="completaChiamata(${item.id})">Fatto</button>
                         </div>`;
                 });
@@ -89,15 +69,11 @@
         }
 
         // --- REALTIME ---
-        client
-            .channel('schema-db-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, payload => {
-                caricaChiamate();
-            })
-            .subscribe();
+        client.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, () => caricaChiamate()).subscribe();
+        client.channel('staff-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_status' }, () => caricaStaff()).subscribe();
 
         // Avvio
-        caricaStato();
+        caricaStaff();
         caricaChiamate();
     </script>
 </body>
