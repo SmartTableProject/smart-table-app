@@ -2,91 +2,70 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ardea Caffè - Smart Table</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; text-align: center; background-color: #f8f9fa; padding: 20px; }
-        img { max-width: 150px; margin: 20px 0; }
-        .tavolo { font-size: 2rem; color: #2c3e50; margin-bottom: 20px; }
-        
-        .btn-call { background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
+        .btn-call { transition: background 0.3s; background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
         .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .quick-btn { padding: 15px; background: white; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; font-size: 0.9rem; }
+        #status-msg { margin-top: 15px; font-weight: bold; color: #27ae60; height: 20px; }
     </style>
 </head>
 <body>
-
-    <img src="logo.png" alt="Logo">
     <div class="tavolo" id="tavolo-label">Tavolo --</div>
-
-    <!-- Pulsante principale (lasciato fisso per emergenza) -->
     <button class="btn-call" id="btn-call" onclick="inviaChiamata('generic', 'Chiamata Generica')">🔔 CHIAMA CAMERIERE</button>
-
-    <!-- Contenitore dinamico per i bottoni -->
-    <div class="quick-grid" id="menu-container">
-        <!-- I bottoni verranno caricati qui dal database -->
-    </div>
+    <div id="status-msg"></div>
+    <div class="quick-grid" id="menu-container"></div>
 
     <script>
-        const SUPABASE_URL = 'https://izmppsvnxghfeitktldh.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bXBwc3ZueGdoZmVpdGt0bGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzA3NTIsImV4cCI6MjA5OTYwNjc1Mn0.-LQQC11p6d25EG67J1YCTp2QpYc2WlMW3nmg-z-VK_0';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'YOUR_SUPABASE_KEY');
+        const t = new URLSearchParams(window.location.search).get('tavolo') || '05';
+        const tableName = 'Tavolo ' + t;
+        document.getElementById('tavolo-label').innerText = tableName;
 
-        const params = new URLSearchParams(window.location.search);
-        const t = params.get('tavolo') || '05';
-        document.getElementById('tavolo-label').innerText = "Tavolo " + t;
+        // --- PING-BACK LISTENER ---
+        client
+            .channel('feedback-channel')
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'calls',
+                filter: `table_number=eq.${tableName}` 
+            }, (payload) => {
+                if (payload.new.status === 'done') {
+                    const btn = document.getElementById('btn-call');
+                    const msg = document.getElementById('status-msg');
+                    
+                    btn.style.backgroundColor = "#27ae60"; // Feedback verde
+                    msg.innerText = "✅ Il cameriere sta arrivando!";
+                    
+                    setTimeout(() => {
+                        btn.style.backgroundColor = "#d9534f";
+                        msg.innerText = "";
+                    }, 5000);
+                }
+            })
+            .subscribe();
 
-        // Caricamento Menu Dinamico
         async function caricaMenu() {
-            const { data, error } = await supabaseClient
-                .from('config_buttons')
-                .select('*')
-                .eq('is_active', true);
-
-            if (error) {
-                console.error("Errore caricamento menu:", error);
-                return;
-            }
-
+            const { data } = await client.from('config_buttons').select('*').eq('is_active', true);
             const container = document.getElementById('menu-container');
-            container.innerHTML = ''; // Svuota il contenitore
-
-            data.forEach(btn => {
-                const button = document.createElement('button');
-                button.className = 'quick-btn';
-                button.innerText = btn.label;
-                button.onclick = () => inviaChiamata(btn.action_type, btn.label);
-                container.appendChild(button);
+            data?.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = 'quick-btn';
+                b.innerText = btn.label;
+                b.onclick = () => inviaChiamata(btn.action_type, btn.label);
+                container.appendChild(b);
             });
         }
 
-        async function logAudit(eventType, tableId, metadata = {}) {
-            supabaseClient
-                .from('audit_events')
-                .insert([{ event_type: eventType, table_id: tableId, metadata: metadata }])
-                .then(({ error }) => { if (error) console.error("Errore log:", error); });
-        }
-
         async function inviaChiamata(tipo, desc) {
-            logAudit('call_created', 'Tavolo ' + t, { type: tipo, description: desc });
-            
-            try {
-                const { error } = await supabaseClient.from('calls').insert([{ 
-                    table_number: 'Tavolo ' + t, 
-                    call_type: tipo, 
-                    payload: { label: desc },
-                    status: 'pending' 
-                }]);
-
-                if (error) throw error;
-                alert(desc + " richiesta!");
-            } catch (err) {
-                alert("Errore: " + err.message);
-            }
+            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: tableName, metadata: { type: tipo } }]);
+            await client.from('calls').insert([{ table_number: tableName, call_type: tipo, status: 'pending' }]);
+            alert(desc + " richiesta!");
         }
 
-        // Avvia il caricamento del menu all'apertura della pagina
         caricaMenu();
     </script>
 </body>
