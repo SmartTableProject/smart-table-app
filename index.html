@@ -6,24 +6,30 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; text-align: center; background-color: #f8f9fa; padding: 20px; }
-        .btn-call { background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
+        .btn-call { transition: background 0.3s; background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
         .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .quick-btn { padding: 15px; background: white; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; font-size: 0.9rem; }
+        #status-msg { margin-top: 15px; font-weight: bold; color: #27ae60; height: 20px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class="tavolo" id="tavolo-label">Tavolo --</div>
     <button class="btn-call" id="btn-call" onclick="inviaChiamata('generic', 'Chiamata Generica')">🔔 CHIAMA CAMERIERE</button>
+    <div id="status-msg"></div>
     <div class="quick-grid" id="menu-container"></div>
+
     <script>
         const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'YOUR_SUPABASE_KEY');
         const t = new URLSearchParams(window.location.search).get('tavolo') || '05';
-        document.getElementById('tavolo-label').innerText = "Tavolo " + t;
+        const tableName = 'Tavolo ' + t;
+        document.getElementById('tavolo-label').innerText = tableName;
 
+        // 1. Caricamento Menu Dinamico
         async function caricaMenu() {
             const { data } = await client.from('config_buttons').select('*').eq('is_active', true);
             const container = document.getElementById('menu-container');
-            data.forEach(btn => {
+            container.innerHTML = ""; // Pulizia
+            data?.forEach(btn => {
                 const b = document.createElement('button');
                 b.className = 'quick-btn';
                 b.innerText = btn.label;
@@ -31,12 +37,38 @@
                 container.appendChild(b);
             });
         }
+
+        // 2. Invio Chiamata
         async function inviaChiamata(tipo, desc) {
-            // Logica di Audit Log integrata
-            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: 'Tavolo ' + t, metadata: { type: tipo } }]);
-            await client.from('calls').insert([{ table_number: 'Tavolo ' + t, call_type: tipo, status: 'pending' }]);
+            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: tableName, metadata: { type: tipo } }]);
+            await client.from('calls').insert([{ table_number: tableName, call_type: tipo, status: 'pending' }]);
             alert(desc + " richiesta!");
         }
+
+        // 3. Sistema Ping-Back (Realtime)
+        client
+            .channel('feedback-channel')
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'calls',
+                filter: `table_number=eq.${tableName}` 
+            }, (payload) => {
+                if (payload.new.status === 'done') {
+                    const btn = document.getElementById('btn-call');
+                    const msg = document.getElementById('status-msg');
+                    
+                    btn.style.backgroundColor = "#27ae60";
+                    msg.innerText = "✅ Il cameriere sta arrivando!";
+                    
+                    setTimeout(() => {
+                        btn.style.backgroundColor = "#d9534f";
+                        msg.innerText = "";
+                    }, 5000);
+                }
+            })
+            .subscribe();
+
         caricaMenu();
     </script>
 </body>
