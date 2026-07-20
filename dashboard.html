@@ -6,9 +6,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+        .status-panel { margin-bottom: 20px; }
+        #btn-toggle { border: none; padding: 15px 25px; border-radius: 10px; cursor: pointer; font-size: 1rem; font-weight: bold; transition: background 0.3s; }
         .card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 10px; 
                 display: flex; justify-content: space-between; align-items: center; border-left: 8px solid #ccc; }
-        /* Colori per priorità */
         .card.water { border-left-color: #3498db; }
         .card.bread { border-left-color: #f1c40f; }
         .card.cutlery { border-left-color: #e67e22; }
@@ -18,59 +19,86 @@
 </head>
 <body>
     <h1>📋 Chiamate in Sala</h1>
+    
+    <div class="status-panel">
+        <button id="btn-toggle" onclick="toggleServizio()">Caricamento stato...</button>
+    </div>
+
     <div id="lista-chiamate">Recupero dati...</div>
 
-   <script>
-    const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bXBwc3ZueGdoZmVpdGt0bGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzA3NTIsImV4cCI6MjA5OTYwNjc1Mn0.-LQQC11p6d25EG67J1YCTp2QpYc2WlMW3nmg-z-VK_0');
+    <script>
+        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bXBwc3ZueGdoZmVpdGt0bGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzA3NTIsImV4cCI6MjA5OTYwNjc1Mn0.-LQQC11p6d25EG67J1YCTp2QpYc2WlMW3nmg-z-VK_0');
 
-    // 1. Funzione per caricare la lista iniziale
-    async function caricaChiamate() {
-        const { data, error } = await client
-            .from('calls')
-            .select('*')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false });
+        let isDuty = false;
 
-        if (error) return;
-
-        const container = document.getElementById('lista-chiamate');
-        container.innerHTML = "";
-        
-        if (data.length === 0) {
-            container.innerHTML = "<p>Tutto tranquillo in sala.</p>";
-        } else {
-            data.forEach(item => {
-                const tipo = item.call_type || 'generic';
-                const desc = item.payload?.label || 'Chiamata';
-                container.innerHTML += `
-                    <div class="card ${tipo}" id="call-${item.id}">
-                        <div>
-                            <strong>${item.table_number}</strong><br>
-                            ${desc}
-                        </div>
-                        <button class="btn-done" onclick="completaChiamata(${item.id})">Fatto</button>
-                    </div>`;
-            });
+        // --- GESTIONE STATO SERVIZIO ---
+        async function aggiornaUIStato() {
+            const btn = document.getElementById('btn-toggle');
+            btn.innerText = isDuty ? "🟢 In Servizio" : "🔴 In Pausa";
+            btn.style.backgroundColor = isDuty ? "#27ae60" : "#d9534f";
+            btn.style.color = "white";
         }
-    }
 
-    // 2. Funzione per completare la chiamata
-    async function completaChiamata(id) {
-        await client.from('calls').update({ status: 'done' }).eq('id', id);
-        // La lista si aggiornerà da sola grazie al Realtime
-    }
+        async function toggleServizio() {
+            isDuty = !isDuty;
+            await client.from('staff_status').update({ is_on_duty: isDuty }).eq('staff_name', 'Cameriere 1');
+            aggiornaUIStato();
+        }
 
-    // 3. LOGICA REALTIME: Ascolta i cambiamenti in tempo reale
-    client
-        .channel('schema-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, payload => {
-            console.log('Cambio rilevato!', payload);
-            caricaChiamate(); // Ricarica la lista istantaneamente
-        })
-        .subscribe();
+        async function caricaStato() {
+            const { data } = await client.from('staff_status').select('is_on_duty').eq('staff_name', 'Cameriere 1').single();
+            if (data) {
+                isDuty = data.is_on_duty;
+                aggiornaUIStato();
+            }
+        }
 
-    // Caricamento iniziale
-    caricaChiamate();
-</script>
+        // --- GESTIONE CHIAMATE ---
+        async function caricaChiamate() {
+            const { data, error } = await client
+                .from('calls')
+                .select('*')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+
+            if (error) return;
+
+            const container = document.getElementById('lista-chiamate');
+            container.innerHTML = "";
+            
+            if (data.length === 0) {
+                container.innerHTML = "<p>Tutto tranquillo in sala.</p>";
+            } else {
+                data.forEach(item => {
+                    const tipo = item.call_type || 'generic';
+                    const desc = item.payload?.label || 'Chiamata';
+                    container.innerHTML += `
+                        <div class="card ${tipo}" id="call-${item.id}">
+                            <div>
+                                <strong>${item.table_number}</strong><br>
+                                ${desc}
+                            </div>
+                            <button class="btn-done" onclick="completaChiamata(${item.id})">Fatto</button>
+                        </div>`;
+                });
+            }
+        }
+
+        async function completaChiamata(id) {
+            await client.from('calls').update({ status: 'done' }).eq('id', id);
+        }
+
+        // --- REALTIME ---
+        client
+            .channel('schema-db-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, payload => {
+                caricaChiamate();
+            })
+            .subscribe();
+
+        // Avvio
+        caricaStato();
+        caricaChiamate();
+    </script>
 </body>
 </html>
