@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Smart Table — Staff</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div>
+        <div class="brand">Smart Table · Staff</div>
+        <h1 class="h1">Coda sala</h1>
+        <p class="sub">Vibrazione → PRENDI → servi → CHIUDI</p>
+      </div>
+    </div>
+
+    <div class="self-check" id="self-check">
+      <span class="dot" id="dot-cloud"></span>
+      <span id="check-msg">Controllo…</span>
+    </div>
+
+    <div class="card">
+      <label class="muted">Il tuo nome (appare sul claim)</label>
+      <input id="staff-name" value="" placeholder="Es. Marco"
+        style="width:100%;margin-top:6px;padding:12px;border-radius:10px;border:1px solid var(--line);font-size:1rem" />
+      <div class="actions">
+        <button class="btn btn-soft" type="button" id="btn-pause">Pausa protetta</button>
+        <button class="btn btn-primary" type="button" id="btn-duty">In servizio</button>
+      </div>
+      <p class="muted" id="pause-msg" style="margin-top:8px"></p>
+    </div>
+
+    <div id="lista-chiamate"><p class="muted">Caricamento chiamate…</p></div>
+  </div>
+
+  <script>
+    const client = stClient();
+    const nameInput = document.getElementById("staff-name");
+    nameInput.value = localStorage.getItem("st_staff_name") || "";
+    nameInput.addEventListener("change", () =>
+      localStorage.setItem("st_staff_name", nameInput.value.trim())
+    );
+
+    let onBreak = localStorage.getItem("st_on_break") === "1";
+
+    function myName() {
+      return (nameInput.value || "Cameriere").trim();
+    }
+
+    function setBreakUI() {
+      const msg = document.getElementById("pause-msg");
+      if (onBreak) {
+        msg.innerHTML = '<span class="badge break">IN PAUSA</span> — non ricevi lavoro nuovo. I colleghi coprono.';
+        document.getElementById("btn-pause").textContent = "Termina pausa";
+      } else {
+        msg.textContent = "In servizio. Le chiamate rosse hanno priorità.";
+        document.getElementById("btn-pause").textContent = "Pausa protetta";
+      }
+    }
+
+    async function refreshCheck() {
+      const s = await stSelfCheck(client);
+      document.getElementById("dot-cloud").className =
+        "dot " + (s.cloud ? (s.queue ? "warn" : "on") : "off");
+      document.getElementById("check-msg").textContent = s.message;
+    }
+
+    function ageLabel(createdAt) {
+      const sec = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+      if (sec < 60) return sec + "s";
+      return Math.floor(sec / 60) + "m";
+    }
+
+    async function caricaChiamate() {
+      if (onBreak) {
+        document.getElementById("lista-chiamate").innerHTML =
+          '<div class="card"><strong>Pausa attiva</strong><p class="muted">Nessuna nuova chiamata. Buon riposo — è un diritto.</p></div>';
+        return;
+      }
+      const { data, error } = await client
+        .from("calls")
+        .select("*")
+        .in("status", ["pending", "claimed"])
+        .order("created_at", { ascending: true });
+
+      const box = document.getElementById("lista-chiamate");
+      if (error) {
+        box.innerHTML = '<div class="card"><strong>Attenzione</strong><p class="muted">Impossibile leggere le chiamate. Controlla rete / schema SQL.</p></div>';
+        return;
+      }
+      if (!data?.length) {
+        box.innerHTML = '<div class="card"><strong>Tutto tranquillo</strong><p class="muted">Nessuna chiamata attiva.</p></div>';
+        return;
+      }
+
+      box.innerHTML = data
+        .map((item) => {
+          const sla = stSlaClass(item.created_at);
+          const label = item.payload?.label || ST_CONFIG.labels[item.call_type] || item.call_type;
+          const mine = item.claimed_by && item.claimed_by === myName();
+          const claimed = item.status === "claimed";
+          return `
+          <div class="card ${sla}" id="call-${item.id}">
+            <div class="row">
+              <div>
+                <strong>${item.table_number}</strong>
+                <div>${label}</div>
+                <div class="muted">${ageLabel(item.created_at)} · ${claimed ? "Presa da " + (item.claimed_by || "?") : "In attesa"}</div>
+              </div>
+              <span class="badge">${sla.replace("sla-", "").toUpperCase()}</span>
+            </div>
+            <div class="actions">
+              ${
+                !claimed
+                  ? `<button class="btn btn-primary" onclick="claimCall('${item.id}')">Prendi</button>`
+                  : mine
+                  ? `<button class="btn btn-ok" onclick="doneCall('${item.id}')">Chiudi</button>`
+                  : `<button class="btn btn-soft" disabled>Di ${item.claimed_by}</button>`
+              }
+            </div>
+          </div>`;
+        })
+        .join("");
+    }
+
+    window.claimCall = async function (id) {
+      if (onBreak) return alert("Sei in pausa: termina la pausa prima.");
+      const { error } = await client
+        .from("calls")
+        .update({
+          status: "claimed",
+          claimed_by: myName(),
+          claimed_at: new Date().toISOString()
+        })
+        .eq("id", id)
+        .eq("status", "pending");
+      if (error) alert("Claim non riuscito: " + error.message);
+      try {
+        if (navigator.vibrate) navigator.vibrate(40);
+      } catch (e) {}
+      caricaChiamate();
+    };
+
+    window.doneCall = async function (id) {
+      const { error } = await client
+        .from("calls")
+        .update({
+          status: "done",
+          closed_at: new Date().toISOString()
+        })
+        .eq("id", id);
+      if (error) alert("Chiusura non riuscita: " + error.message);
+      caricaChiamate();
+    };
+
+    document.getElementById("btn-pause").onclick = async () => {
+      onBreak = !onBreak;
+      localStorage.setItem("st_on_break", onBreak ? "1" : "0");
+      setBreakUI();
+      // Best-effort sync su staff_status se esiste riga col nome
+      try {
+        await client
+          .from("staff_status")
+          .update({
+            on_break: onBreak,
+            is_on_duty: !onBreak,
+            break_until: onBreak
+              ? new Date(Date.now() + 20 * 60 * 1000).toISOString()
+              : null
+          })
+          .ilike("staff_name", myName());
+      } catch (e) {}
+      caricaChiamate();
+    };
+
+    document.getElementById("btn-duty").onclick = () => {
+      onBreak = false;
+      localStorage.setItem("st_on_break", "0");
+      setBreakUI();
+      caricaChiamate();
+    };
+
+    // Notifica browser su nuova pending (base per watch/PWA)
+    client
+      .channel("staff-calls")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "calls" },
+        (payload) => {
+          caricaChiamate();
+          if (
+            !onBreak &&
+            payload.eventType === "INSERT" &&
+            payload.new?.status === "pending"
+          ) {
+            try {
+              if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+            } catch (e) {}
+            if (Notification.permission === "granted") {
+              new Notification("Smart Table", {
+                body:
+                  (payload.new.table_number || "Tavolo") +
+                  " · " +
+                  (payload.new.payload?.label || payload.new.call_type),
+                tag: "st-call"
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    setBreakUI();
+    refreshCheck();
+    caricaChiamate();
+    setInterval(() => {
+      caricaChiamate();
+      refreshCheck();
+    }, 10000);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+  </script>
+</body>
+</html>

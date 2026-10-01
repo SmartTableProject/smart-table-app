@@ -1,72 +1,180 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <title>Ardea Caffè - Smart Table</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: sans-serif; text-align: center; background-color: #f8f9fa; padding: 20px; }
-        .btn-call { transition: background 0.3s; background-color: #d9534f; color: white; border: none; padding: 20px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 20px; }
-        .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .quick-btn { padding: 15px; background: white; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; font-size: 0.9rem; }
-        #status-msg { margin-top: 15px; font-weight: bold; color: #27ae60; height: 20px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Smart Table — Cliente</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
 </head>
 <body>
-    <div class="tavolo" id="tavolo-label">Tavolo --</div>
-    <button class="btn-call" id="btn-call" onclick="inviaChiamata('generic', 'Chiamata Generica')">🔔 CHIAMA CAMERIERE</button>
-    <div id="status-msg"></div>
-    <div class="quick-grid" id="menu-container"></div>
+  <div class="app">
+    <div class="topbar">
+      <div>
+        <div class="brand">Smart Table · Ardea</div>
+        <h1 class="h1" id="tavolo-label">Tavolo --</h1>
+        <p class="sub">Tocca per chiamare — senza alzare la mano</p>
+      </div>
+    </div>
 
-    <script>
-        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'YOUR_SUPABASE_KEY');
-        const t = new URLSearchParams(window.location.search).get('tavolo') || '05';
-        const tableName = 'Tavolo ' + t;
-        document.getElementById('tavolo-label').innerText = tableName;
+    <div class="self-check" id="self-check">
+      <span class="dot" id="dot-cloud"></span>
+      <span id="check-msg">Controllo collegamento…</span>
+    </div>
 
-        // --- PING-BACK LISTENER ---
-        client
-            .channel('feedback-channel')
-            .on('postgres_changes', { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'calls',
-                filter: `table_number=eq.${tableName}` 
-            }, (payload) => {
-                if (payload.new.status === 'done') {
-                    const btn = document.getElementById('btn-call');
-                    const msg = document.getElementById('status-msg');
-                    
-                    btn.style.backgroundColor = "#27ae60"; // Feedback verde
-                    msg.innerText = "✅ Il cameriere sta arrivando!";
-                    
-                    setTimeout(() => {
-                        btn.style.backgroundColor = "#d9534f";
-                        msg.innerText = "";
-                    }, 5000);
-                }
-            })
-            .subscribe();
+    <button class="btn btn-primary btn-lg" id="btn-generic" type="button">
+      Chiama cameriere
+    </button>
+    <div class="toast" id="status-msg"></div>
 
-        async function caricaMenu() {
-            const { data } = await client.from('config_buttons').select('*').eq('is_active', true);
-            const container = document.getElementById('menu-container');
-            data?.forEach(btn => {
-                const b = document.createElement('button');
-                b.className = 'quick-btn';
-                b.innerText = btn.label;
-                b.onclick = () => inviaChiamata(btn.action_type, btn.label);
-                container.appendChild(b);
-            });
+    <div style="height:14px"></div>
+    <div class="grid-2" id="menu-container"></div>
+
+    <p class="muted" style="margin-top:18px;text-align:center">
+      Se cade internet, la richiesta resta in coda e parte appena torna la linea.
+    </p>
+  </div>
+
+  <script>
+    const client = stClient();
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("tavolo") || "05";
+    const tableCode = raw.padStart(2, "0");
+    const tableName = "Tavolo " + tableCode;
+    document.getElementById("tavolo-label").textContent = tableName;
+
+    const fallbackButtons = [
+      { label: "💧 Acqua", action_type: "water" },
+      { label: "🍞 Pane", action_type: "bread" },
+      { label: "🍴 Posate", action_type: "cutlery" },
+      { label: "🧹 Pulizia", action_type: "clean" },
+      { label: "🧾 Conto", action_type: "bill" },
+      { label: "🙋 Cameriere", action_type: "generic" }
+    ];
+
+    async function refreshCheck() {
+      const s = await stSelfCheck(client);
+      const dot = document.getElementById("dot-cloud");
+      dot.className = "dot " + (s.cloud ? (s.queue ? "warn" : "on") : "off");
+      document.getElementById("check-msg").textContent = s.message;
+      if (s.cloud && s.queue) {
+        const r = await ST_OFFLINE.flush(client);
+        if (r.ok) refreshCheck();
+      }
+    }
+
+    async function markOccupied() {
+      try {
+        await client
+          .from("tables")
+          .update({ status: "occupied", updated_at: new Date().toISOString() })
+          .eq("table_number", tableCode)
+          .eq("venue_id", ST_CONFIG.venueId);
+      } catch (e) { /* ok se tabella non ancora migrata */ }
+    }
+
+    async function inviaChiamata(tipo, desc) {
+      const payload = {
+        table_number: tableName,
+        call_type: tipo,
+        status: "pending",
+        payload: { label: desc },
+        venue_id: ST_CONFIG.venueId
+      };
+      const audit = {
+        event_type: "call_created",
+        table_id: tableName,
+        metadata: { type: tipo, offline: !navigator.onLine }
+      };
+
+      const msg = document.getElementById("status-msg");
+      try {
+        if (!navigator.onLine) throw new Error("offline");
+        const { error } = await client.from("calls").insert([payload]);
+        if (error) throw error;
+        await client.from("audit_events").insert([audit]);
+        await markOccupied();
+        msg.textContent = "✅ " + desc + " inviata";
+        msg.style.color = "var(--ok)";
+      } catch (e) {
+        ST_OFFLINE.push({ type: "call", payload });
+        ST_OFFLINE.push({ type: "audit", payload: audit });
+        msg.textContent = "📦 Salvata in locale — partirà al ritorno rete";
+        msg.style.color = "var(--warn)";
+      }
+      refreshCheck();
+      setTimeout(() => { msg.textContent = ""; }, 4000);
+    }
+
+    function renderButtons(list) {
+      const box = document.getElementById("menu-container");
+      box.innerHTML = "";
+      list.forEach((btn) => {
+        const b = document.createElement("button");
+        b.className = "quick-btn";
+        b.type = "button";
+        b.textContent = btn.label;
+        b.onclick = () => inviaChiamata(btn.action_type, btn.label);
+        box.appendChild(b);
+      });
+    }
+
+    async function caricaMenu() {
+      try {
+        const { data, error } = await client
+          .from("config_buttons")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true });
+        if (error || !data?.length) throw error || new Error("empty");
+        renderButtons(data);
+      } catch (e) {
+        renderButtons(fallbackButtons);
+      }
+    }
+
+    document.getElementById("btn-generic").onclick = () =>
+      inviaChiamata("generic", "Chiamata cameriere");
+
+    // Feedback quando lo staff completa
+    client
+      .channel("feedback-" + tableName)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "calls",
+          filter: "table_number=eq." + tableName
+        },
+        (payload) => {
+          if (payload.new.status === "claimed") {
+            document.getElementById("status-msg").textContent =
+              "👀 Un cameriere sta arrivando";
+          }
+          if (payload.new.status === "done") {
+            document.getElementById("status-msg").textContent = "✅ Fatto!";
+          }
         }
+      )
+      .subscribe();
 
-        async function inviaChiamata(tipo, desc) {
-            await client.from('audit_events').insert([{ event_type: 'call_created', table_id: tableName, metadata: { type: tipo } }]);
-            await client.from('calls').insert([{ table_number: tableName, call_type: tipo, status: 'pending' }]);
-            alert(desc + " richiesta!");
-        }
+    window.addEventListener("online", () => {
+      ST_OFFLINE.flush(client).then(refreshCheck);
+    });
 
-        caricaMenu();
-    </script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+
+    markOccupied();
+    caricaMenu();
+    refreshCheck();
+    setInterval(refreshCheck, 15000);
+  </script>
 </body>
 </html>

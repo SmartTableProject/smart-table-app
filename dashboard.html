@@ -1,91 +1,175 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard Cameriere - Ardea Caffè</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .staff-panel { margin-bottom: 25px; }
-        .card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 10px; 
-                display: flex; justify-content: space-between; align-items: center; border-left: 8px solid #ccc; }
-        .staff-card { background: #fff; padding: 15px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #ddd; }
-        .btn-toggle { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; color: white; font-weight: bold; }
-        .btn-done { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; }
-        .card.water { border-left-color: #3498db; }
-        .card.bread { border-left-color: #f1c40f; }
-        .card.cutlery { border-left-color: #e67e22; }
-        .card.clean { border-left-color: #9b59b6; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b3d2e" />
+  <title>Smart Table — Dashboard sala</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
 </head>
 <body>
-    <h1>📋 Dashboard Cameriere</h1>
-    
-    <div class="staff-panel" id="staff-container">Caricamento staff...</div>
-    <div id="lista-chiamate">Recupero dati...</div>
+  <div class="app app-wide">
+    <div class="topbar">
+      <div>
+        <div class="brand">Smart Table · Responsabile</div>
+        <h1 class="h1">Dashboard sala</h1>
+        <p class="sub">Panoramica — i camerieri lavorano da telefono/watch</p>
+      </div>
+      <div>
+        <a class="btn btn-soft" href="staff.html" style="display:inline-block;width:auto;text-decoration:none">Apri vista staff</a>
+      </div>
+    </div>
 
-    <script>
-        const client = supabase.createClient('https://izmppsvnxghfeitktldh.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bXBwc3ZueGdoZmVpdGt0bGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzA3NTIsImV4cCI6MjA5OTYwNjc1Mn0.-LQQC11p6d25EG67J1YCTp2QpYc2WlMW3nmg-z-VK_0');
+    <div class="self-check">
+      <span class="dot" id="dot-cloud"></span>
+      <span class="dot" id="dot-queue"></span>
+      <span id="check-msg">Controllo…</span>
+    </div>
 
-        // --- GESTIONE STAFF ---
-        async function caricaStaff() {
-            const { data } = await client.from('staff_status').select('*');
-            const container = document.getElementById('staff-container');
-            container.innerHTML = "<h3>Gestione Personale</h3>";
-            
-            data.forEach(s => {
-                const div = document.createElement('div');
-                div.className = 'staff-card';
-                div.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <strong>${s.staff_name}</strong><br>
-                            <small>Zone: ${s.assigned_zones || 'Nessuna'}</small>
-                        </div>
-                        <button class="btn-toggle" onclick="toggleStaff(${s.id}, ${s.is_on_duty})" 
-                                style="background: ${s.is_on_duty ? '#27ae60' : '#d9534f'}">
-                            ${s.is_on_duty ? "In Servizio" : "In Pausa"}
-                        </button>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-        }
+    <div class="split">
+      <div>
+        <h2 style="color:var(--accent)">Chiamate</h2>
+        <div id="lista-chiamate"></div>
+      </div>
+      <div>
+        <h2 style="color:var(--accent)">Staff</h2>
+        <div id="staff-container"></div>
+        <h2 style="color:var(--accent)">Tavoli</h2>
+        <div id="tables-container" class="grid-2"></div>
+      </div>
+    </div>
+  </div>
 
-        async function toggleStaff(id, currentStatus) {
-            await client.from('staff_status').update({ is_on_duty: !currentStatus }).eq('id', id);
-            caricaStaff();
-        }
+  <script>
+    const client = stClient();
 
-        // --- GESTIONE CHIAMATE ---
-        async function caricaChiamate() {
-            const { data } = await client.from('calls').select('*').eq('status', 'pending').order('created_at', { ascending: false });
-            const container = document.getElementById('lista-chiamate');
-            container.innerHTML = "<h3>Chiamate Attive</h3>";
-            if (!data || data.length === 0) {
-                container.innerHTML += "<p>Tutto tranquillo in sala.</p>";
-            } else {
-                data.forEach(item => {
-                    container.innerHTML += `
-                        <div class="card ${item.call_type || 'generic'}" id="call-${item.id}">
-                            <div><strong>${item.table_number}</strong><br>${item.payload?.label || 'Chiamata'}</div>
-                            <button class="btn-done" onclick="completaChiamata(${item.id})">Fatto</button>
-                        </div>`;
-                });
-            }
-        }
+    async function refreshCheck() {
+      const s = await stSelfCheck(client);
+      document.getElementById("dot-cloud").className = "dot " + (s.cloud ? "on" : "off");
+      document.getElementById("dot-queue").className =
+        "dot " + (s.queue ? "warn" : "on");
+      document.getElementById("check-msg").textContent = s.message;
+    }
 
-        async function completaChiamata(id) {
-            await client.from('calls').update({ status: 'done' }).eq('id', id);
-        }
+    function ageLabel(createdAt) {
+      const sec = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+      if (sec < 60) return sec + "s";
+      return Math.floor(sec / 60) + "m " + (sec % 60) + "s";
+    }
 
-        // --- REALTIME ---
-        client.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, () => caricaChiamate()).subscribe();
-        client.channel('staff-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'staff_status' }, () => caricaStaff()).subscribe();
+    async function caricaChiamate() {
+      const { data } = await client
+        .from("calls")
+        .select("*")
+        .in("status", ["pending", "claimed"])
+        .order("created_at", { ascending: true });
+      const box = document.getElementById("lista-chiamate");
+      if (!data?.length) {
+        box.innerHTML = '<div class="card"><strong>Sala quieta</strong></div>';
+        return;
+      }
+      box.innerHTML = data
+        .map((item) => {
+          const sla = stSlaClass(item.created_at);
+          const label = item.payload?.label || item.call_type;
+          return `<div class="card ${sla}">
+            <div class="row">
+              <div>
+                <strong>${item.table_number}</strong> · ${label}<br/>
+                <span class="muted">${ageLabel(item.created_at)} · ${item.status}${item.claimed_by ? " · " + item.claimed_by : ""}</span>
+              </div>
+              <button class="btn btn-ok" style="width:auto" onclick="forceDone('${item.id}')">Chiudi</button>
+            </div>
+          </div>`;
+        })
+        .join("");
+    }
 
-        // Avvio
-        caricaStaff();
-        caricaChiamate();
-    </script>
+    window.forceDone = async function (id) {
+      await client
+        .from("calls")
+        .update({ status: "done", closed_at: new Date().toISOString() })
+        .eq("id", id);
+      caricaChiamate();
+    };
+
+    async function caricaStaff() {
+      const { data } = await client.from("staff_status").select("*");
+      const box = document.getElementById("staff-container");
+      if (!data?.length) {
+        box.innerHTML =
+          '<div class="card muted">Nessuno staff in anagrafica. Aggiungi righe in staff_status su Supabase.</div>';
+        return;
+      }
+      box.innerHTML = data
+        .map((s) => {
+          const paused = s.on_break;
+          return `<div class="card">
+            <div class="row">
+              <div>
+                <strong>${s.staff_name}</strong><br/>
+                <span class="muted">Zone: ${s.assigned_zones || "—"}</span>
+              </div>
+              <span class="badge ${paused ? "break" : ""}">${
+                paused ? "IN PAUSA" : s.is_on_duty ? "IN SERVIZIO" : "FUORI"
+              }</span>
+            </div>
+          </div>`;
+        })
+        .join("");
+    }
+
+    async function caricaTavoli() {
+      const { data } = await client
+        .from("tables")
+        .select("*")
+        .order("table_number", { ascending: true });
+      const box = document.getElementById("tables-container");
+      if (!data?.length) {
+        box.innerHTML =
+          '<div class="card muted">Esegui SQL 001_p0_staff_first.sql per creare i tavoli.</div>';
+        return;
+      }
+      const map = {
+        free: "Libero",
+        occupied: "Occupato",
+        bill: "Conto",
+        reset: "Da sparecchiare",
+        reserved: "Riservato"
+      };
+      box.innerHTML = data
+        .map(
+          (t) => `<div class="card" style="padding:10px">
+          <strong>T${t.table_number}</strong><br/>
+          <span class="muted">${map[t.status] || t.status}</span>
+        </div>`
+        )
+        .join("");
+    }
+
+    client
+      .channel("dash-calls")
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, caricaChiamate)
+      .subscribe();
+    client
+      .channel("dash-staff")
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_status" }, caricaStaff)
+      .subscribe();
+    client
+      .channel("dash-tables")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tables" }, caricaTavoli)
+      .subscribe();
+
+    caricaChiamate();
+    caricaStaff();
+    caricaTavoli();
+    refreshCheck();
+    setInterval(() => {
+      caricaChiamate();
+      refreshCheck();
+    }, 8000);
+  </script>
 </body>
 </html>
